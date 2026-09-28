@@ -1,6 +1,16 @@
 import Link from "next/link";
+import { supabaseServer } from "@/lib/supabase/server";
 
-export default function Home() {
+export default async function Home() {
+  const supabase = await supabaseServer();
+  const { data: latestNews } = await supabase
+    .from("news_papers")
+    .select("*")
+    .eq("status", "published")
+    .order("published_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   return (
     <div>
       <section className="min-h-[calc(100vh-68px)] flex items-center justify-center text-center px-4">
@@ -41,6 +51,19 @@ export default function Home() {
           ))}
         </div>
       </section>
+
+      {latestNews && (
+        <section className="max-w-3xl mx-auto px-4 pb-20">
+          <p className="text-center text-xs font-bold tracking-[.24em] uppercase text-blue-600 mb-3">Latest Issue</p>
+          <Link
+            href={`/news/${latestNews.id}`}
+            className="card bar-left before:bg-blue-600 p-8 block text-center hover:before:bg-blue-400"
+          >
+            <h3 className="font-black text-xl">{latestNews.title}</h3>
+            <p className="text-sm text-blue-700/70 dark:text-blue-300/70 mt-2">Read the latest newsletter →</p>
+          </Link>
+        </section>
+      )}
     </div>
   );
 }

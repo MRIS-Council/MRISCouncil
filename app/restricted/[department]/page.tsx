@@ -3,6 +3,7 @@ import VolunteeringPanel from "@/components/panels/VolunteeringPanel";
 import ActivitiesPanel from "@/components/panels/ActivitiesPanel";
 import TeamPanel from "@/components/panels/TeamPanel";
 import ClubsPanel from "@/components/panels/ClubsPanel";
+import NewsPanel from "@/components/panels/NewsPanel";
 
 export default async function DepartmentDashboard({ params }: { params: Promise<{ department: string }> }) {
   const { department } = await params;
@@ -15,6 +16,7 @@ export default async function DepartmentDashboard({ params }: { params: Promise<
           {department === "volunteering" && <VolunteeringPanel />}
           {department === "council" && <TeamPanel />}
           {department === "clubs" && <ClubsPanel />}
+          {department === "news" && <NewsPanel />}
         </div>
       </div>
     </ProtectedRoute>
