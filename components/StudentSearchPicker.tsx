@@ -15,13 +15,36 @@ export default function StudentSearchPicker({ onSelect }: { onSelect: (s: Studen
   const search = async (value: string) => {
     setQ(value);
     setShowAdd(false);
-    if (value.trim().length < 2) { setResults([]); setSearched(false); return; }
-    const { data } = await supabase.rpc("search_students", { p_q: value });
-    setResults(data ?? []);
+    if (value.trim().length < 2) {
+      setResults([]);
+      setSearched(false);
+      return;
+    }
+
+    const term = value.trim();
+    const { data, error } = await supabase
+      .from("students")
+      .select("*")
+      .or(`full_name.ilike.%${term}%,school_id.ilike.%${term}%`)
+      .limit(10);
+
+    if (error) {
+      console.error("Student search failed:", error);
+      setResults([]);
+      setSearched(true);
+      return;
+    }
+
+    setResults((data ?? []) as Student[]);
     setSearched(true);
   };
 
-  const pick = (s: Student) => { setQ(s.full_name); setResults([]); setSearched(false); onSelect(s); };
+  const pick = (s: Student) => {
+    setQ(s.full_name);
+    setResults([]);
+    setSearched(false);
+    onSelect(s);
+  };
 
   const addStudent = async (e: React.FormEvent) => {
     e.preventDefault();

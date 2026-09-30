@@ -19,8 +19,21 @@ export default function NewsPanel() {
 
   const addDraft = async (e: React.FormEvent) => {
     e.preventDefault();
+    setMsg("");
     const { data: { user } } = await supabase.auth.getUser();
-    await supabase.from("news_papers").insert({ title: newPaper.title, due_date: newPaper.due_date, created_by: user?.id });
+    const { error } = await supabase.from("news_papers").insert({
+      title: newPaper.title.trim(),
+      due_date: newPaper.due_date || null,
+      status: "draft",
+      created_by: user?.id ?? null,
+    });
+
+    if (error) {
+      setMsg(error.message);
+      return;
+    }
+
+    setMsg("Draft created.");
     setNewPaper({ title: "", due_date: "" });
     refresh();
   };
@@ -28,13 +41,22 @@ export default function NewsPanel() {
   const openEditor = (p: any) => { setEditingId(p.id); setContent(p.content ?? ""); };
 
   const saveContent = async () => {
-    await supabase.from("news_papers").update({ content }).eq("id", editingId);
+    const { error } = await supabase.from("news_papers").update({ content }).eq("id", editingId);
+    if (error) {
+      setMsg(error.message);
+      return;
+    }
+
     setMsg("Saved.");
     refresh();
   };
 
   const finalize = async (id: string) => {
-    await supabase.from("news_papers").update({ status: "published", published_at: new Date().toISOString() }).eq("id", id);
+    const { error } = await supabase.from("news_papers").update({ status: "published", published_at: new Date().toISOString() }).eq("id", id);
+    if (error) {
+      setMsg(error.message);
+      return;
+    }
     refresh();
   };
 

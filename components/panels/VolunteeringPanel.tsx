@@ -9,7 +9,7 @@ export default function VolunteeringPanel() {
   const { department } = useAuth();
   const [allDepartments, setAllDepartments] = useState<{ slug: string; name: string }[]>([]);
   const [opps, setOpps] = useState<any[]>([]);
-  const [form, setForm] = useState({ title: "", description: "", event_date: "", location: "", slots: "", department_slug: department ?? "" });
+  const [form, setForm] = useState({ title: "", description: "", event_date: "", location: "", slots: "", hours_awarded: "", department_slug: department ?? "" });
   const [log, setLog] = useState<{ student: any; hours: string; event: string }>({ student: null, hours: "", event: "" });
   const [msg, setMsg] = useState("");
 
@@ -23,9 +23,26 @@ export default function VolunteeringPanel() {
 
   const [copyOppId, setCopyOppId] = useState("");
   const [copied, setCopied] = useState(false);
+  const [accessError, setAccessError] = useState<string | null>(null);
+
+  const normalizedDepartment = department === "volunteer" ? "volunteering" : department;
 
   const refresh = async () => {
-    const { data } = await supabase.from("opportunities").select("*, applications(count)").order("event_date", { ascending: false });
+    setAccessError(null);
+
+    let query = supabase.from("opportunities").select("*").order("event_date", { ascending: false });
+    if (normalizedDepartment && normalizedDepartment !== "council") {
+      query = query.in("department_slug", [normalizedDepartment, "volunteer"]);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      console.error("Failed to load volunteering opportunities:", error);
+      setAccessError("Volunteer data is blocked by Supabase permissions. Grant access to opportunities and related volunteer tables.");
+      setOpps([]);
+      return;
+    }
+
     setOpps(data ?? []);
     if (department === "council") {
       const { data: d } = await supabase.from("departments").select("*");
@@ -36,13 +53,15 @@ export default function VolunteeringPanel() {
 
   const addOpportunity = async (e: React.FormEvent) => {
     e.preventDefault();
-    const target = department === "council" ? form.department_slug : department;
+    const target = department === "council" ? form.department_slug : (department === "volunteer" ? "volunteer" : department);
     const { error } = await supabase.from("opportunities").insert({
       title: form.title, description: form.description, event_date: form.event_date,
-      location: form.location, slots: form.slots ? Number(form.slots) : null, department_slug: target,
+      location: form.location, slots: form.slots ? Number(form.slots) : null,
+      hours_awarded: form.hours_awarded !== "" ? Number(form.hours_awarded) : 0,
+      department_slug: target,
     });
     setMsg(error ? error.message : "Opportunity added.");
-    if (!error) { setForm({ title: "", description: "", event_date: "", location: "", slots: "", department_slug: department ?? "" }); refresh(); }
+    if (!error) { setForm({ title: "", description: "", event_date: "", location: "", slots: "", hours_awarded: "", department_slug: department ?? "" }); refresh(); }
   };
 
   const toggleOpen = async (o: any) => {
@@ -65,15 +84,35 @@ export default function VolunteeringPanel() {
   };
 
   const fetchApplicants = async (oppId: string) => {
-    const { data: apps } = await supabase
+    const { data: apps, error: appsError } = await supabase
       .from("applications")
-      .select("id, created_at, selected, students(id, school_id, full_name, class_name)")
+      .select("id, created_at, selected, student_id, opportunity_id")
       .eq("opportunity_id", oppId);
 
-    const studentIds = (apps ?? []).map((a: any) => a.students.id);
-    const { data: hours } = studentIds.length
+    if (appsError) {
+      console.error("Failed to load applicants:", appsError);
+      return [];
+    }
+
+    const studentIds = (apps ?? []).map((a: any) => a.student_id).filter(Boolean);
+    const studentMap: Record<string, any> = {};
+
+    if (studentIds.length) {
+      const { data: students, error: studentError } = await supabase.from("students").select("*").in("id", studentIds);
+      if (!studentError) {
+        (students ?? []).forEach((s: any) => {
+          studentMap[s.id] = s;
+        });
+      }
+    }
+
+    const { data: hours, error: hoursError } = studentIds.length
       ? await supabase.from("volunteer_hours").select("student_id, hours, event").in("student_id", studentIds)
-      : { data: [] };
+      : { data: [], error: null };
+
+    if (hoursError) {
+      console.error("Failed to load volunteer hours:", hoursError);
+    }
 
     const totals: Record<string, number> = {};
     const thisEvent: Record<string, number> = {};
@@ -83,12 +122,20 @@ export default function VolunteeringPanel() {
       if (h.event === oppTitle) thisEvent[h.student_id] = (thisEvent[h.student_id] ?? 0) + Number(h.hours);
     });
 
-    const rows = (apps ?? []).map((a: any) => ({
-      appId: a.id, id: a.students.id, name: a.students.full_name, school_id: a.students.school_id,
-      class_name: a.students.class_name, applied_at: a.created_at, selected: a.selected,
-      total_hours: totals[a.students.id] ?? 0, event_hours: thisEvent[a.students.id] ?? 0,
-    }));
-    return rows;
+    return (apps ?? []).map((a: any) => {
+      const student = studentMap[a.student_id];
+      return {
+        appId: a.id,
+        id: a.student_id,
+        name: student?.full_name ?? "Unknown",
+        school_id: student?.school_id ?? "—",
+        class_name: student?.class_name ?? "—",
+        applied_at: a.created_at,
+        selected: a.selected,
+        total_hours: totals[a.student_id] ?? 0,
+        event_hours: thisEvent[a.student_id] ?? 0,
+      };
+    });
   };
 
   const viewApplicants = async (oppId: string) => {
@@ -102,24 +149,79 @@ export default function VolunteeringPanel() {
   };
 
   const toggleSelected = async (oppId: string, appId: string, current: boolean) => {
-    await supabase.from("applications").update({ selected: !current }).eq("id", appId);
+    const opp = opps.find((o) => o.id === oppId);
+    const nextSelected = !current;
+
+    await supabase.from("applications").update({ selected: nextSelected }).eq("id", appId);
+
+    if (nextSelected) {
+      const app = applicants[oppId]?.find((a) => a.appId === appId);
+      if (app && opp) {
+        const { data: userData } = await supabase.auth.getUser();
+        const hoursAwarded = Number(opp.hours_awarded ?? 0);
+
+        const { data: existing } = await supabase
+          .from("volunteer_hours")
+          .select("id")
+          .eq("student_id", app.id)
+          .eq("opportunity_id", oppId)
+          .limit(1);
+
+        if (!existing || existing.length === 0) {
+          const { error: hoursError } = await supabase.from("volunteer_hours").insert({
+            student_id: app.id,
+            opportunity_id: oppId,
+            department_slug: opp.department_slug,
+            event: opp.title,
+            hours: hoursAwarded,
+            served_on: opp.event_date,
+            logged_by: userData?.user?.id ?? null,
+          });
+
+          if (hoursError) {
+            console.error("Failed to award hours:", hoursError);
+          } else {
+            setMsg(`${app.name} was awarded ${hoursAwarded} volunteer hour${hoursAwarded === 1 ? "" : "s"}.`);
+          }
+        }
+      }
+    }
+
     setApplicants({
       ...applicants,
-      [oppId]: applicants[oppId].map((a) => a.appId === appId ? { ...a, selected: !current } : a),
+      [oppId]: applicants[oppId].map((a) => a.appId === appId ? { ...a, selected: nextSelected } : a),
     });
   };
 
   const lookupSearch = async (q: string) => {
     setLookupSelected(null);
     if (q.trim().length < 2) { setLookupResults([]); return; }
-    const { data } = await supabase.rpc("search_students", { p_q: q });
+
+    const term = q.trim();
+    const { data, error } = await supabase
+      .from("students")
+      .select("*")
+      .or(`full_name.ilike.%${term}%,school_id.ilike.%${term}%`)
+      .limit(10);
+
+    if (error) {
+      console.error("Failed to search students:", error);
+      setLookupResults([]);
+      return;
+    }
+
     setLookupResults(data ?? []);
   };
 
   const lookupSelect = async (student: any) => {
     setLookupSelected(student);
     setLookupResults([]);
-    const { data } = await supabase.from("volunteer_hours").select("event, hours, served_on, department_slug").eq("student_id", student.id).order("served_on", { ascending: false });
+    const { data, error } = await supabase.from("volunteer_hours").select("event, hours, served_on, department_slug").eq("student_id", student.id).order("served_on", { ascending: false });
+    if (error) {
+      console.error("Failed to load student history:", error);
+      setLookupHistory([]);
+      return;
+    }
     setLookupHistory(data ?? []);
   };
 
@@ -161,6 +263,7 @@ export default function VolunteeringPanel() {
           <input type="date" value={form.event_date} onChange={(e) => setForm({ ...form, event_date: e.target.value })} className="w-full border rounded-xl px-3 py-2.5 bg-transparent" />
           <input placeholder="Location" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} className="w-full border rounded-xl px-3 py-2.5 bg-transparent" />
           <input type="number" placeholder="Slots (optional)" value={form.slots} onChange={(e) => setForm({ ...form, slots: e.target.value })} className="w-full border rounded-xl px-3 py-2.5 bg-transparent" />
+          <input type="number" min="0" step="0.5" placeholder="Hours awarded if accepted" value={form.hours_awarded} onChange={(e) => setForm({ ...form, hours_awarded: e.target.value })} className="w-full border rounded-xl px-3 py-2.5 bg-transparent" />
           <button className="w-full sm:w-auto bg-blue-900 text-white px-5 py-3 sm:py-2.5 rounded-xl font-bold text-sm">Add</button>
         </form>
 
@@ -173,7 +276,13 @@ export default function VolunteeringPanel() {
         </form>
       </div>
 
-      {msg && <p className="text-sm text-blue-700 dark:text-blue-300 break-words">{msg}</p>}
+      {msg && <p className="text-sm text-blue-900 dark:text-blue-100 break-words whitespace-pre-wrap">{msg}</p>}
+      {accessError && (
+        <div className="card p-6 text-sm text-blue-700 dark:text-blue-300">
+          <p className="font-black uppercase text-xs tracking-widest">Volunteer access issue</p>
+          <p className="mt-2">{accessError}</p>
+        </div>
+      )}
 
       {/* copy selected volunteers to send on WhatsApp */}
       <div className="card p-6">
@@ -196,15 +305,19 @@ export default function VolunteeringPanel() {
       <div className="card p-6">
         <h3 className="font-black uppercase text-sm mb-4">Your opportunities</h3>
         <div className="divide-y">
-          {opps.map((o) => (
+          {opps.map((o) => {
+            const applicationCount = Array.isArray(o.applications) ? (o.applications[0]?.count ?? 0) : 0;
+
+            return (
             <div key={o.id} className="py-4">
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
                 <div>
                   <p className="font-bold">{o.title}</p>
                   <p className="text-xs text-blue-700/70">{o.event_date} · {o.location}</p>
                   <p className="text-xs mt-1">
-                    <span className="font-bold text-blue-600">{o.applications[0]?.count ?? 0}</span> applied{o.slots ? ` / ${o.slots}` : ""}
+                    <span className="font-bold text-blue-600">{applicationCount}</span> applied{o.slots ? ` / ${o.slots}` : ""}
                     {" · "}<span className={o.applications_open ? "text-ok" : "text-bad"}>{o.applications_open ? "Open" : "Closed"}</span>
+                    {" · "}<span className="font-bold text-blue-600">{Number(o.hours_awarded ?? 0)}h</span> award
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -238,12 +351,12 @@ export default function VolunteeringPanel() {
                           </thead>
                           <tbody>
                             {applicants[o.id].map((a) => (
-                              <tr key={a.appId} className={`border-t border-blue-100 dark:border-blue-900 ${a.selected ? "bg-ok/10" : ""}`}>
-                                <td className="py-2 font-bold">{a.name}</td>
-                                <td className="text-blue-700/80">{a.school_id}</td>
-                                <td className="text-blue-700/80">{a.class_name ?? "—"}</td>
-                                <td>{a.event_hours || "—"}</td>
-                                <td className="font-black text-blue-600">{a.total_hours}</td>
+                              <tr key={a.appId} className={`border-t border-blue-100 dark:border-blue-900 ${a.selected ? "bg-ok/10 text-blue-900 dark:text-blue-100" : "text-blue-900 dark:text-blue-100"}`}>
+                                <td className="py-2 font-bold text-blue-900 dark:text-blue-100">{a.name}</td>
+                                <td className="text-blue-800 dark:text-blue-100">{a.school_id}</td>
+                                <td className="text-blue-800 dark:text-blue-100">{a.class_name ?? "—"}</td>
+                                <td className="text-blue-800 dark:text-blue-100">{a.event_hours || "—"}</td>
+                                <td className="font-black text-blue-700 dark:text-blue-200">{a.total_hours}</td>
                                 <td>
                                   <button onClick={() => toggleSelected(o.id, a.appId, a.selected)}
                                     className={`text-xs font-bold px-2.5 py-1.5 rounded-lg whitespace-nowrap ${a.selected ? "bg-ok text-white" : "border"}`}>
@@ -262,7 +375,8 @@ export default function VolunteeringPanel() {
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 

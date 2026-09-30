@@ -11,10 +11,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const resolve = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setDepartment(null); setLoading(false); return; }
-    const { data } = await supabase.from("department_members").select("department_slug").eq("user_id", user.id).single();
-    setDepartment(data?.department_slug ?? null);
+    setLoading(true);
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      setDepartment(null);
+      setLoading(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("department_members")
+      .select("department_slug")
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("Failed to load department membership:", error);
+      setDepartment(null);
+      setLoading(false);
+      return;
+    }
+
+    const dept = data?.[0]?.department_slug ?? null;
+    setDepartment(dept);
     setLoading(false);
   };
 

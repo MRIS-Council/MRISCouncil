@@ -21,13 +21,42 @@ export default function ActivitiesPanel() {
 
   const addActivity = async (e: React.FormEvent) => {
     e.preventDefault();
-    await supabase.from("activities").insert(newActivity);
+    const payload = {
+      title: newActivity.title.trim(),
+      type: newActivity.type.trim(),
+      description: newActivity.description.trim(),
+      status: "upcoming",
+    };
+
+    const { error } = await supabase.from("activities").insert(payload);
+    if (error) {
+      console.error("Add activity failed:", error);
+      alert(error.message);
+      return;
+    }
+
     setNewActivity({ title: "", type: "", description: "" });
     refresh();
   };
 
-  const updateStatus = async (id: string, status: string) => { await supabase.from("activities").update({ status }).eq("id", id); refresh(); };
-  const removeActivity = async (id: string) => { await supabase.from("activities").delete().eq("id", id); refresh(); };
+  const updateStatus = async (id: string, status: string) => {
+    const { error } = await supabase.from("activities").update({ status }).eq("id", id);
+    if (error) {
+      console.error("Update status failed:", error);
+      alert(error.message);
+      return;
+    }
+    refresh();
+  };
+  const removeActivity = async (id: string) => {
+    const { error } = await supabase.from("activities").delete().eq("id", id);
+    if (error) {
+      console.error("Delete activity failed:", error);
+      alert(error.message);
+      return;
+    }
+    refresh();
+  };
 
   const loadDetail = async (activityId: string) => {
     if (openId === activityId) { setOpenId(null); return; }
