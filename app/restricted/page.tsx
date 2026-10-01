@@ -16,9 +16,32 @@ export default function RestrictedLogin() {
     e.preventDefault();
     const ok = await login(user, pass);
     if (!ok) { setError("Wrong username or password."); return; }
+
     const { data: { user: authUser } } = await supabase.auth.getUser();
-    const { data } = await supabase.from("department_members").select("department_slug").eq("user_id", authUser!.id).single();
-    router.push(`/restricted/${data?.department_slug}`);
+    if (!authUser) {
+      setError("Your login session could not be restored.");
+      return;
+    }
+
+    const { data, error } = await supabase.from("department_members").select("department_slug").eq("user_id", authUser.id);
+
+    if (error) {
+      setError("Restricted access is currently blocked by database permissions. Please check the Supabase RLS policy for department_members.");
+      return;
+    }
+
+    if (!data || data.length === 0) {
+      setError("This account is not assigned to a department.");
+      return;
+    }
+
+    const targetDepartment = data[0]?.department_slug;
+    if (!targetDepartment) {
+      setError("This account does not have a department assigned.");
+      return;
+    }
+
+    router.push(`/restricted/${targetDepartment}`);
   };
 
   return (
