@@ -2,6 +2,70 @@
 import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/client";
 
+const teamStatFields = ["played", "won", "drawn", "lost", "goals_for", "goals_against", "goal_difference", "points"] as const;
+type TeamStatField = (typeof teamStatFields)[number];
+
+const normaliseTeam = (team: any) => ({
+  ...team,
+  played: Number(team?.played ?? 0),
+  won: Number(team?.won ?? 0),
+  drawn: Number(team?.drawn ?? 0),
+  lost: Number(team?.lost ?? 0),
+  goals_for: Number(team?.goals_for ?? 0),
+  goals_against: Number(team?.goals_against ?? 0),
+  goal_difference: Number(team?.goal_difference ?? 0),
+  points: Number(team?.points ?? 0),
+});
+
+const computeStandings = (teamList: any[], fixtureList: any[]) => {
+  const rows = (teamList ?? []).map(normaliseTeam);
+  const byId = new Map(rows.map((team) => [team.id, team]));
+
+  for (const fixture of fixtureList ?? []) {
+    if (fixture.status !== "completed") continue;
+    if (!fixture.home_team_id || !fixture.away_team_id) continue;
+
+    const homeScore = Number(fixture.home_score ?? 0);
+    const awayScore = Number(fixture.away_score ?? 0);
+    const homeTeam = byId.get(fixture.home_team_id);
+    const awayTeam = byId.get(fixture.away_team_id);
+
+    if (!homeTeam || !awayTeam) continue;
+
+    homeTeam.played += 1;
+    awayTeam.played += 1;
+    homeTeam.goals_for += homeScore;
+    homeTeam.goals_against += awayScore;
+    awayTeam.goals_for += awayScore;
+    awayTeam.goals_against += homeScore;
+
+    if (homeScore > awayScore) {
+      homeTeam.won += 1;
+      homeTeam.points += 3;
+      awayTeam.lost += 1;
+    } else if (awayScore > homeScore) {
+      awayTeam.won += 1;
+      awayTeam.points += 3;
+      homeTeam.lost += 1;
+    } else {
+      homeTeam.drawn += 1;
+      awayTeam.drawn += 1;
+      homeTeam.points += 1;
+      awayTeam.points += 1;
+    }
+
+    homeTeam.goal_difference = homeTeam.goals_for - homeTeam.goals_against;
+    awayTeam.goal_difference = awayTeam.goals_for - awayTeam.goals_against;
+  }
+
+  return rows.sort((a, b) => {
+    if (b.points !== a.points) return b.points - a.points;
+    if (b.goal_difference !== a.goal_difference) return b.goal_difference - a.goal_difference;
+    if (b.goals_for !== a.goals_for) return b.goals_for - a.goals_for;
+    return a.name.localeCompare(b.name);
+  });
+};
+
 export default function ActivitiesPanel() {
   const supabase = supabaseBrowser();
   const [activities, setActivities] = useState<any[]>([]);
@@ -18,6 +82,10 @@ export default function ActivitiesPanel() {
     setActivities(data ?? []);
   };
   useEffect(() => { refresh(); }, []);
+
+  const updateTeamTable = (activityId: string, teamList: any[] = [], fixtureList: any[] = []) => {
+    setTeams((prev) => ({ ...prev, [activityId]: computeStandings(teamList, fixtureList) }));
+  };
 
   const addActivity = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,28 +131,43 @@ export default function ActivitiesPanel() {
     setOpenId(activityId);
     const { data: t } = await supabase.from("teams").select("*").eq("activity_id", activityId).order("name");
     const { data: f } = await supabase.from("fixtures").select("*").eq("activity_id", activityId).order("match_date");
-    setTeams({ ...teams, [activityId]: t ?? [] });
-    setFixtures({ ...fixtures, [activityId]: f ?? [] });
+    updateTeamTable(activityId, t ?? [], f ?? []);
+    setFixtures((prev) => ({ ...prev, [activityId]: f ?? [] }));
   };
 
   const reloadTeams = async (activityId: string) => {
     const { data } = await supabase.from("teams").select("*").eq("activity_id", activityId).order("name");
-    setTeams({ ...teams, [activityId]: data ?? [] });
+    updateTeamTable(activityId, data ?? [], fixtures[activityId] ?? []);
   };
+
   const reloadFixtures = async (activityId: string) => {
     const { data } = await supabase.from("fixtures").select("*").eq("activity_id", activityId).order("match_date");
-    setFixtures({ ...fixtures, [activityId]: data ?? [] });
+    setFixtures((prev) => ({ ...prev, [activityId]: data ?? [] }));
+    updateTeamTable(activityId, teams[activityId] ?? [], data ?? []);
   };
 
   const addTeam = async (e: React.FormEvent, activityId: string) => {
     e.preventDefault();
-    await supabase.from("teams").insert({ activity_id: activityId, name: newTeam.name, group_name: newTeam.group_name || null });
+    await supabase.from("teams").insert({
+      activity_id: activityId,
+      name: newTeam.name,
+      group_name: newTeam.group_name || null,
+      played: 0,
+      won: 0,
+      drawn: 0,
+      lost: 0,
+      goals_for: 0,
+      goals_against: 0,
+      goal_difference: 0,
+      points: 0,
+    });
     setNewTeam({ name: "", group_name: "" });
     reloadTeams(activityId);
   };
 
-  const updateTeamStat = async (teamId: string, activityId: string, field: string, value: string) => {
-    await supabase.from("teams").update({ [field]: Number(value) || 0 }).eq("id", teamId);
+  const updateTeamStat = async (teamId: string, activityId: string, field: TeamStatField, value: string) => {
+    const numericValue = Number(value || 0);
+    await supabase.from("teams").update({ [field]: numericValue }).eq("id", teamId);
     reloadTeams(activityId);
   };
 
@@ -100,8 +183,45 @@ export default function ActivitiesPanel() {
 
   const saveResult = async (fixtureId: string, activityId: string) => {
     const s = scores[fixtureId];
-    if (!s) return;
-    await supabase.from("fixtures").update({ home_score: Number(s.home), away_score: Number(s.away), status: "completed" }).eq("id", fixtureId);
+    if (!s || s.home === "" || s.away === "") return;
+
+    const homeScore = Number(s.home);
+    const awayScore = Number(s.away);
+
+    const { error } = await supabase
+      .from("fixtures")
+      .update({ home_score: homeScore, away_score: awayScore, status: "completed" })
+      .eq("id", fixtureId);
+
+    if (error) {
+      console.error("Save fixture result failed:", error);
+      alert(error.message);
+      return;
+    }
+
+    const nextFixtureList = (fixtures[activityId] ?? []).map((fixture) =>
+      fixture.id === fixtureId ? { ...fixture, home_score: homeScore, away_score: awayScore, status: "completed" } : fixture
+    );
+
+    const nextStandings = computeStandings(teams[activityId] ?? [], nextFixtureList);
+    setTeams((prev) => ({ ...prev, [activityId]: nextStandings }));
+
+    await Promise.all(
+      nextStandings.map((team) =>
+        supabase.from("teams").update({
+          played: team.played,
+          won: team.won,
+          drawn: team.drawn,
+          lost: team.lost,
+          goals_for: team.goals_for,
+          goals_against: team.goals_against,
+          goal_difference: team.goal_difference,
+          points: team.points,
+        }).eq("id", team.id)
+      )
+    );
+
+    setScores((prev) => ({ ...prev, [fixtureId]: { home: "", away: "" } }));
     reloadFixtures(activityId);
   };
 
@@ -151,7 +271,7 @@ export default function ActivitiesPanel() {
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="text-left text-blue-700/60 dark:text-blue-300/60 uppercase tracking-widest">
-                        <th className="py-1.5">Team</th><th>Group</th><th>P</th><th>W</th><th>D</th><th>L</th><th>Pts</th><th></th>
+                        <th className="py-1.5">Team</th><th>Group</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>Pts</th><th></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -159,9 +279,9 @@ export default function ActivitiesPanel() {
                         <tr key={t.id} className="border-t border-blue-100 dark:border-blue-900">
                           <td className="py-1.5 font-bold">{t.name}</td>
                           <td className="text-blue-700/70">{t.group_name ?? "—"}</td>
-                          {["played", "won", "drawn", "lost", "points"].map((field) => (
+                          {teamStatFields.map((field) => (
                             <td key={field}>
-                              <input type="number" defaultValue={t[field]} onBlur={(e) => updateTeamStat(t.id, a.id, field, e.target.value)}
+                              <input type="number" defaultValue={t[field] ?? 0} onBlur={(e) => updateTeamStat(t.id, a.id, field, e.target.value)}
                                 className="w-12 border rounded px-1 py-0.5 bg-transparent" />
                             </td>
                           ))}
