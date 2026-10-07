@@ -25,7 +25,7 @@ export const departments: { name: string; heads: Member[]; members: Member[] }[]
     members: [{ name: "Ahmad Yasser Alsaqabi", role: "Co Head" }, { name: "Razyn Alharbi", role: "Member" }] },
   { name: "Media and PR",
     heads: [{ name: "Fayed Abdulkareem", role: "Head 1" }, { name: "Ayaan Fahad", role: "Head 2" }],
-    members: [{ name: "Abdulrahman Faisal Alturki", role: "Co Head" }, { name: "Abdulkareem Abdul Rahman Al Eissa", role: "Member" }] },
+    members: [{ name: "Abdulrahman Faisal Alturki", role: "Co Head" },{name: "Ahmed Jamiel", role: "Co Head"} ,{ name: "Abdulkareem Abdul Rahman Al Eissa", role: "Member" }] },
   { name: "Newsletter",
     heads: [{ name: "Abdullah Habibullah Chaudhary", role: "Editor in Chief" }],
     members: [
