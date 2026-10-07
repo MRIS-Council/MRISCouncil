@@ -45,16 +45,30 @@ export default function TeamPage() {
             </button>
 
             {open === d.name && (
-              <div className="mt-4 pt-4 border-t border-blue-100 dark:border-blue-900 space-y-2">
-                {[...d.heads, ...d.members].map((m) => (
-                  <div key={m.name} className="flex items-center gap-3">
-                    <Avatar name={m.name} />
-                    <div>
-                      <p className="font-bold text-sm">{m.name}</p>
-                      <p className="text-xs text-blue-700/70 dark:text-blue-300/70">{m.role}</p>
+              <div className="mt-4 pt-6 border-t border-blue-100 dark:border-blue-900">
+                {/* Heads: one on the left, one on the right */}
+                <div className="grid grid-cols-2 items-start">
+                  {d.heads.map((h) => (
+                    <div key={h.name} className="flex flex-col items-center text-center first:justify-self-start first:ml-2 justify-self-center">
+                      <Avatar name={h.name} size="w-20 h-20 sm:w-24 sm:h-24 text-2xl" />
+                      <p className="mt-3 font-black text-sm">{h.name}</p>
+                      <p className="text-xs font-bold uppercase tracking-widest text-blue-600">{h.role}</p>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+
+                {/* Co-head and team: stacked below on the left, name beside the circle */}
+                <div className="mt-8 flex flex-col gap-4 items-start">
+                  {d.members.map((m) => (
+                    <div key={m.name} className="flex items-center gap-8 ml-2">
+                      <Avatar name={m.name} size="w-14 h-14 text-base" />
+                      <div>
+                        <p className="font-bold text-sm">{m.name}</p>
+                        <p className="text-xs text-blue-700/70 dark:text-blue-300/70">{m.role}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>

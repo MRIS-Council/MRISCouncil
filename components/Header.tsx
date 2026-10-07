@@ -6,6 +6,7 @@ const LINKS = [
   { href: "/volunteer", label: "Volunteer" },
   { href: "/activities", label: "Activities" },
   { href: "/news", label: "News" },
+  { href: "/media", label: "Media" },
   { href: "/team", label: "Team" },
   { href: "/clubs", label: "Clubs" },
 ];

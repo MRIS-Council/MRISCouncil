@@ -11,13 +11,19 @@ export default function ActivityTabs({ teams, upcoming, past }: { teams: any[]; 
     <table className="w-full text-sm">
       <thead>
         <tr className="text-left text-blue-700/60 dark:text-blue-300/60 text-[.68rem] uppercase tracking-widest border-b-2 border-blue-100 dark:border-blue-900">
-          <th className="py-2">Team</th><th>P</th><th>W</th><th>D</th><th>L</th><th>Pts</th>
+          <th className="py-2">Team</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>Pts</th>
         </tr>
       </thead>
       <tbody>
-        {[...rows].sort((a, b) => b.points - a.points).map((t) => (
+        {[...rows].sort((a, b) => {
+          if (b.points !== a.points) return b.points - a.points;
+          if ((b.goal_difference ?? 0) !== (a.goal_difference ?? 0)) return (b.goal_difference ?? 0) - (a.goal_difference ?? 0);
+          if ((b.goals_for ?? 0) !== (a.goals_for ?? 0)) return (b.goals_for ?? 0) - (a.goals_for ?? 0);
+          return (a.name ?? "").localeCompare(b.name ?? "");
+        }).map((t) => (
           <tr key={t.id} className="border-b border-blue-100 dark:border-blue-900">
             <td className="py-2 font-bold">{t.name}</td><td>{t.played}</td><td>{t.won}</td><td>{t.drawn}</td><td>{t.lost}</td>
+            <td>{t.goals_for ?? 0}</td><td>{t.goals_against ?? 0}</td><td>{t.goal_difference ?? 0}</td>
             <td className="font-black text-blue-600">{t.points}</td>
           </tr>
         ))}

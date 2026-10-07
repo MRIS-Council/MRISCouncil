@@ -5,27 +5,27 @@ import Reveal from "@/components/Reveal";
 export default async function Home() {
   const supabase = await supabaseServer();
 
-  const { data: latestNews } = await supabase
-    .from("news_papers")
-    .select("*")
-    .eq("status", "published")
-    .order("published_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const { data: upcoming } = await supabase
-    .from("fixtures")
-    .select("*, home_team:teams!home_team_id(name), away_team:teams!away_team_id(name), activities(id, title)")
-    .eq("status", "scheduled")
-    .order("match_date")
-    .limit(3);
-
-  const { data: results } = await supabase
-    .from("fixtures")
-    .select("*, home_team:teams!home_team_id(name), away_team:teams!away_team_id(name), activities(id, title)")
-    .eq("status", "completed")
-    .order("match_date", { ascending: false })
-    .limit(3);
+  const [{ data: latestNews }, { data: upcoming }, { data: results }] = await Promise.all([
+    supabase
+      .from("news_papers")
+      .select("*")
+      .eq("status", "published")
+      .order("published_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("fixtures")
+      .select("*, home_team:teams!home_team_id(name), away_team:teams!away_team_id(name), activities(id, title)")
+      .eq("status", "scheduled")
+      .order("match_date")
+      .limit(3),
+    supabase
+      .from("fixtures")
+      .select("*, home_team:teams!home_team_id(name), away_team:teams!away_team_id(name), activities(id, title)")
+      .eq("status", "completed")
+      .order("match_date", { ascending: false })
+      .limit(3),
+  ]);
 
   return (
     <div>
