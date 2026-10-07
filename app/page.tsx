@@ -1,3 +1,5 @@
+// produced and maintained by the Manarat Al-Riyadh International School Student Council IT Team
+
 import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase/server";
 import Reveal from "@/components/Reveal";
