@@ -2,7 +2,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabaseBrowser } from "./supabase/client";
 
-type AuthCtx = { department: string | null; loading: boolean; login: (u: string, p: string) => Promise<boolean>; logout: () => void };
+type AuthCtx = { department: string | null; loading: boolean; login: (u: string, p: string) => Promise<{ ok: boolean; department: string | null; error?: string }>; logout: () => void };
 const Ctx = createContext<AuthCtx | null>(null);
 const supabase = supabaseBrowser();
 
@@ -44,9 +44,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async (u: string, p: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email: `${u}@mris.internal`, password: p });
-    return !error;
-  };
+  const { data, error } = await supabase.auth.signInWithPassword({ email: `${u}@mris.internal`, password: p });
+  if (error || !data.user) {
+    return { ok: false, department: null, error: "Wrong username or password." };
+  }
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("department_members")
+    .select("department_slug")
+    .eq("user_id", data.user.id);
+
+  if (membershipError) {
+    return { ok: false, department: null, error: "Restricted access is currently blocked by database permissions." };
+  }
+
+  const dept = membership?.[0]?.department_slug ?? null;
+  if (!dept) {
+    return { ok: false, department: null, error: "This account is not assigned to a department." };
+  }
+
+  setDepartment(dept);
+  return { ok: true, department: dept };
+};
 
   return <Ctx.Provider value={{ department, loading, login, logout: () => supabase.auth.signOut() }}>{children}</Ctx.Provider>;
 }
