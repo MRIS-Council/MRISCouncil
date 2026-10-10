@@ -61,10 +61,9 @@ export default async function MediaPage() {
         <p className="text-sm text-blue-700 dark:text-blue-300 mb-6 max-w-2xl mx-auto">
           Browse photos and videos from the entire school year, organized by month and event.
         </p>
-        <a href="https://drive.google.com/YOUR_FOLDER_ID_HERE" target="_blank" rel="noopener noreferrer"
-          className="inline-block bg-blue-900 text-white px-8 py-3.5 rounded-xl font-bold text-sm uppercase tracking-wider hover:bg-blue-800">
-          Open Google Drive →
-        </a>
+       <a href="https://drive.google.com/drive/folders/1BV8phMxjTfxAQclXmXiuI-sx_eWfRrZo" target="_blank" rel="noopener noreferrer">
+  Open Google Drive →
+</a>
       </div>
     </div>
   );
